@@ -6,7 +6,7 @@
 
 ## Overview
 
-This plugin integrates RaiAccept — Raiffeisen Bank Serbia's online payment gateway — with the Phoca Cart e-commerce component for Joomla 6. It was built from scratch since Raiffeisen Bank Serbia only provides an official WooCommerce,OpenCart, Magento 2 and PrestaShop plugin.
+This plugin integrates RaiAccept — Raiffeisen Bank Serbia's online payment gateway — with the Phoca Cart e-commerce component for Joomla 6. It was built from scratch since Raiffeisen Bank Serbia only provides an official WooCommerce, OpenCart, Magento 2 and PrestaShop plugin.
 
 The plugin handles the full payment lifecycle: checkout redirect, success/fail/cancel return handling, webhook processing, and refund triggering from the Phoca Cart admin orders list.
 
