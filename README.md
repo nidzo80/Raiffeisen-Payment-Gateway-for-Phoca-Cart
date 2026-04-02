@@ -30,6 +30,9 @@ plg_pcp_raiaccept/
 │       └── ShopHelper.php       # Phoca Cart helper utilities
 └── language/
     └── en-GB/
+    │   ├── plg_pcp_raiaccept.ini
+    │   └── plg_pcp_raiaccept.sys.ini
+    └── sr-YU/
         ├── plg_pcp_raiaccept.ini
         └── plg_pcp_raiaccept.sys.ini
 ```
