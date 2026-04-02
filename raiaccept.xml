@@ -2,8 +2,8 @@
 <extension type="plugin" group="pcp" method="upgrade" version="3">
     <name>plg_pcp_raiaccept</name>
     <creationDate>2026-03-18</creationDate>
-    <author>Nikola Đurić</author>
-    <authorEmail>info@lenix.rs</authorEmail>
+    <author>Your Name</author>
+    <authorEmail>your@email.com</authorEmail>
     <copyright>Copyright (C) 2026. All rights reserved.</copyright>
     <license>GNU General Public License version 3 or later</license>
     <version>1.0.0</version>
@@ -15,6 +15,8 @@
     <languages folder="language">
         <language tag="en-GB">en-GB/plg_pcp_raiaccept.ini</language>
         <language tag="en-GB">en-GB/plg_pcp_raiaccept.sys.ini</language>
+		<language tag="sr-YU">sr-YU/plg_pcp_raiaccept.ini</language>
+        <language tag="sr-YU">sr-YU/plg_pcp_raiaccept.sys.ini</language>
     </languages>
 
     <files>
