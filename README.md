@@ -6,15 +6,77 @@
 
 ## Overview
 
-This plugin integrates RaiAccept — Raiffeisen Bank Serbia's online payment gateway — with the Phoca Cart e-commerce component for Joomla 6. It was built from scratch since Raiffeisen Bank Serbia only provides an official WooCommerce, OpenCart, Magento 2 and PrestaShop plugin.
+This plugin integrates RaiAccept — Raiffeisen Bank Serbia's online payment gateway — with the Phoca Cart e-commerce component for Joomla 6. It was built from scratch since Raiffeisen Bank Serbia only provides an official WooCommerce plugin.
 
-The plugin handles the full payment lifecycle: checkout redirect, success/fail/cancel return handling, webhook processing, and refund triggering from the Phoca Cart admin orders list.
+The plugin handles the full payment lifecycle: checkout redirect, success/fail/cancel return handling, webhook processing, and admin refund from the Phoca Cart orders list.
+
+---
+
+## Features
+
+- ✅ Full checkout redirect flow (hosted payment page)
+- ✅ Success / fail / cancel return handling with API verification
+- ✅ Webhook processing (PURCHASE and REFUND events)
+- ✅ One-click checkout for logged-in users
+- ✅ Admin refund button directly in the Phoca Cart orders list
+- ✅ Partial and full refund support
+- ✅ Multi-currency support with exchange rate handling
+- ✅ English and Serbian language files
+- ✅ Configurable order statuses per payment event
+
+---
+
+## Requirements
+
+- Joomla 6.x
+- Phoca Cart 6.0+
+- PHP 8.2+
+
+---
+
+## Installation
+
+1. Download the latest ZIP from releases
+2. Install via **Joomla Admin → System → Install → Extensions**
+3. Go to **Phoca Cart → Payment** and add a new payment method using the RaiAccept plugin
+4. Configure credentials and order statuses in the payment method settings
+
+---
+
+## Configuration
+
+All settings are managed in **Phoca Cart → Payment → RaiAccept** (not in Joomla plugin manager).
+
+| Setting | Description | Default |
+|---|---|---|
+| Sandbox Mode | Use sandbox API for testing | Yes |
+| API Username | RaiAccept API username from Merchant Portal | — |
+| API Password | RaiAccept API password from Merchant Portal | — |
+| Payment Completed | Order status ID for successful payment | 6 |
+| Payment Failed | Order status ID for failed payment | 7 |
+| Payment Canceled | Order status ID for canceled payment | 3 |
+| Payment Refunded | Order status ID for full refund | 5 |
+| Payment Partially Refunded | Order status ID for partial refund | 5 |
+
+Default status IDs match the standard Phoca Cart installation:
+
+| ID | Status |
+|---|---|
+| 1 | Pending |
+| 2 | Confirmed |
+| 3 | Canceled |
+| 4 | Shipped |
+| 5 | Refunded |
+| 6 | Completed |
+| 7 | Failed |
+
+If you add a custom "Partially Refunded" status, update the `Payment Partially Refunded` field accordingly.
 
 ---
 
 ## Architecture
 
-The plugin follows the Phoca Cart 6 payment plugin conventions, using the new Joomla 6 service provider pattern (`services/provider.php`) and PSR-4 autoloading.
+The plugin uses the Joomla 6 service provider pattern (`services/provider.php`) with PSR-4 autoloading.
 
 ```
 plg_pcp_raiaccept/
@@ -29,10 +91,10 @@ plg_pcp_raiaccept/
 │       ├── ApiHelper.php        # RaiAccept API client
 │       └── ShopHelper.php       # Phoca Cart helper utilities
 └── language/
-    └── en-GB/
+    ├── en-GB/
     │   ├── plg_pcp_raiaccept.ini
     │   └── plg_pcp_raiaccept.sys.ini
-    └── sr-YU/
+    └── sr-RS/
         ├── plg_pcp_raiaccept.ini
         └── plg_pcp_raiaccept.sys.ini
 ```
@@ -41,13 +103,12 @@ plg_pcp_raiaccept/
 
 ## RaiAccept API Flow
 
-Authentication is handled via Amazon Cognito (direct cURL, not SDK):
+Authentication via Amazon Cognito (direct cURL with exact headers required):
 
 ```
 POST https://authenticate.raiaccept.com
 Content-Type: application/x-amz-json-1.1
 X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth
-ClientId: kr2gs4117arvbnaperqff5dml
 ```
 
 Full payment flow:
@@ -57,12 +118,13 @@ Full payment flow:
 3. **Create session** → `POST https://trapi.raiaccept.com/orders/{id}/checkout` → returns `paymentRedirectURL`
 4. **Redirect customer** to RaiAccept hosted payment page
 5. **Customer returns** via `successUrl` / `failUrl` / `cancelUrl`
-6. **Webhook** arrives at `notificationUrl` with transaction result
-7. **Refund** → `POST https://trapi.raiaccept.com/orders/{id}/transactions/{txId}/refund`
+6. **API verify** order status on return
+7. **Webhook** arrives at `notificationUrl` with transaction result
+8. **Refund** → `POST https://trapi.raiaccept.com/orders/{id}/transactions/{txId}/refund`
 
 ---
 
-## Phoca Cart Events Implemented
+## Phoca Cart Events
 
 | Event | Purpose |
 |---|---|
@@ -72,18 +134,47 @@ Full payment flow:
 | `onPCPafterRecievePayment` | Handle customer return (success/fail/cancel) |
 | `onPCPonPaymentWebhook` | Process RaiAccept webhook notification |
 | `onPCPbeforeCheckPayment` | Alternative webhook handler |
+| `onPCPgetPaymentBranchInfoAdminList` | Refund panel in admin orders list |
 | `onAjaxRaiaccept` | Ajax handler for admin refund |
+
+### Note on `onPCPgetPaymentBranchInfoAdminList`
+
+This event uses the Joomla 6 PSR-14 dispatcher (sends an `Event` object), unlike other Phoca Cart payment events which use the legacy direct-parameter style. The plugin registers this listener explicitly in the constructor:
+
+```php
+$subject->addListener(
+    'onPCPgetPaymentBranchInfoAdminList',
+    [$this, 'onPCPgetPaymentBranchInfoAdminList']
+);
+```
+
+The refund panel appears in the orders list only when filtering by payment method (**Filter Options → Payment: Raiffeisen**).
 
 ---
 
-## Key Implementation Details
+## Admin Refund
+
+The refund button appears in **Phoca Cart → Orders** when filtering by the Raiffeisen payment method. It shows:
+
+- **Refund input + button** — when `rai_transaction_id` is present and available amount > 0
+- **"Transaction ID missing"** — when transaction ID is not saved (use `rai_check.php` on dev servers)
+- **"Fully Refunded"** — when the full amount has already been refunded
+
+Refund is processed via `com_ajax` → `onAjaxRaiaccept()`, which:
+1. Reads credentials from `#__phocacart_payment_methods`
+2. Calls RaiAccept refund API
+3. Updates `rai_refunded_amount` in `params_payment`
+4. Sets order status to Refunded or Partially Refunded
+
+---
+
+## Key Implementation Notes
 
 ### Webhook Order Lookup
 
-`PhocacartOrder::getOrderIdByOrderNumber()` is **not available** in the webhook request context in Phoca Cart 6. We use a direct DB query instead:
+`PhocacartOrder::getOrderIdByOrderNumber()` is not available in webhook context. Direct DB query used instead:
 
 ```php
-$db      = Factory::getContainer()->get(DatabaseInterface::class);
 $orderId = (int) $db->setQuery(
     $db->getQuery(true)
        ->select('id')
@@ -94,135 +185,62 @@ $orderId = (int) $db->setQuery(
 
 ### Payment ID in Webhook URL
 
-Phoca Cart does not pass `pid` (payment method ID) to the webhook handler automatically unless it is embedded in the `notificationUrl`:
+Must be embedded in `notificationUrl`:
 
 ```
-notificationUrl = site/index.php?option=com_phocacart&view=response
+.../index.php?option=com_phocacart&view=response
     &task=response.paymentwebhook&type=raiaccept&pid={paymentId}
 ```
 
 ### Cognito Authentication
 
-The RaiAccept authentication endpoint is an Amazon Cognito User Pool. It **must** be called with direct cURL using the exact `Content-Type: application/x-amz-json-1.1` header and `X-Amz-Target` header. Generic HTTP helper classes will not work.
+Must use direct cURL with `Content-Type: application/x-amz-json-1.1` and `X-Amz-Target` headers.
 
-### Transaction ID Storage
+### Phoca Cart Bootstrap in Ajax Context
 
-The plugin stores `rai_transaction_id` in `params_payment` (JSON field in `#__phocacart_orders`) immediately when the PURCHASE webhook arrives. This ID is required for issuing refunds.
-
-On development servers where RaiAccept cannot reach the webhook URL, `rai_transaction_id` can be recovered manually via the included diagnostic script `rai_check.php`.
-
-### One-Click Checkout
-
-For logged-in Joomla users, the plugin automatically enables RaiAccept one-click checkout by including:
+Phoca Cart classes are not auto-loaded in `com_ajax` requests:
 
 ```php
-'recurring' => [
-    'customerReference' => 'joomla-user-' . $userId,
-    'recurringModel'    => 'ONE_CLICK_CHECKOUT',
-]
+require_once JPATH_ADMINISTRATOR . '/components/com_phocacart/libraries/bootstrap.php';
 ```
 
-### Currency
+### Order Total Amount
 
-All amounts are sent in the shop's active currency. The `currency_exchange_rate` from the order is used to convert product prices from the default currency.
+Stored in `#__phocacart_order_total`, not in `#__phocacart_orders`:
 
-### Country Codes
+```php
+$db->getQuery(true)
+   ->select('t.amount_currency')
+   ->from('#__phocacart_order_total AS t')
+   ->where('t.order_id = ' . $orderId)
+   ->where('t.type = ' . $db->quote('brutto'))
+```
 
-RaiAccept requires ISO 3166-1 alpha-3 country codes (`SRB`, `DEU`, etc.). The plugin includes a conversion map from ISO 2-letter codes.
+### Admin Credentials in Ajax Context
+
+Payment credentials are in `#__phocacart_payment_methods`, not `#__extensions`.
 
 ---
 
-## Admin Refund (Work in Progress)
+## Diagnostic Tool (`rai_check.php`)
 
-### Goal
+For development servers where RaiAccept cannot reach the webhook URL.
 
-Add a refund button to the Phoca Cart admin orders list that triggers a refund via the RaiAccept API without leaving the page.
-
-### Approach
-
-Per advice from the Phoca Cart developer (Jan Pavelka), the correct approach is:
-
-1. Display the refund button via the `GetPaymentBranchInfoAdminList` Phoca Cart event, which fires for each order row in the admin orders list (`com_phocacart`, `view=phocacartorders`)
-2. Trigger the refund via Joomla's standard `com_ajax` feature, handled by `onAjaxRaiaccept()` in the plugin
-
-### Current Status — `GetPaymentBranchInfoAdminList` Not Firing
-
-The plugin implements `onPCPgetPaymentBranchInfoAdminList()` but the method is **never called**. The Phoca Cart `Dispatcher` dispatches the event correctly:
-
-```php
-// From: administrator/components/com_phocacart/tmpl/phocacartorders/default.php
-$results = Dispatcher::dispatch(new Event\Payment\GetPaymentBranchInfoAdminList(
-    'com_phocacart.phocacartorders', $item, $paymentInfo, [
-        'pluginname' => $paramsPayment['method'],
-    ]
-));
-```
-
-The event class:
-
-```php
-// Phoca\PhocaCart\Event\Payment\GetPaymentBranchInfoAdminList
-parent::__construct('pcp', 'onPCPgetPaymentBranchInfoAdminList', [
-    'context'       => $context,
-    'order'         => $order,
-    'paymentMethod' => $paymentMethod,
-    'eventData'     => $eventData,
-]);
-```
-
-This is a **Joomla 6 PSR-14 event** (uses `ResultAware` + `ResultTypeArrayAware` traits). The method must receive a `\Joomla\Event\Event` object and return results via `$event->addResult()`.
-
-We have tried:
-- Method signature `onPCPgetPaymentBranchInfoAdminList(\Joomla\Event\Event $event): void` with `$event->addResult([...])`
-- Implementing `SubscriberInterface` + `getSubscribedEvents()`
-- Overriding `registerListeners()` with explicit `addListener()`
-- Explicit `addListener()` in `services/provider.php`
-
-None of these caused the method to be called.
-
-**Open question for the Phoca Cart developer:** How should a `pcp` payment plugin register a listener for `GetPaymentBranchInfoAdminList` in Joomla 6? Which registration mechanism does Phoca Cart expect?
-
----
-
-## Plugin Parameters
-
-| Parameter | Description | Default |
-|---|---|---|
-| `sandbox` | Use sandbox API endpoints | Yes |
-| `api_username` | RaiAccept API username | — |
-| `api_password` | RaiAccept API password | — |
-| `status_completed` | Order status ID for completed payment | 6 |
-| `status_failed` | Order status ID for failed payment | 7 |
-| `status_canceled` | Order status ID for canceled payment | 3 |
-| `status_refunded` | Order status ID for full refund | 5 |
-| `status_part_refunded` | Order status ID for partial refund | 5 |
-
----
-
-## Diagnostic Tool
-
-`rai_check.php` is a standalone script (upload to site root, then delete after use) that:
-
-- Displays `rai_order_id` and `rai_transaction_id` for a given Phoca Cart order
-- Fetches the transaction list from the RaiAccept API
-- Allows manually saving `rai_transaction_id` to the database (needed on dev servers where webhooks cannot reach)
+**Upload to site root, use, then delete immediately.**
 
 Usage: `https://yoursite.com/rai_check.php?order_id=X`
 
----
+- Shows `rai_order_id` and `rai_transaction_id`
+- Fetches transaction list from RaiAccept API
+- Allows manually saving `rai_transaction_id` to the database
 
-## Environment
-
-- **Joomla**: 6.x
-- **Phoca Cart**: 6.0.0
-- **PHP**: 8.2+
-- **Tested on**: Serbian market (RSD currency, Serbian billing addresses)
+Not needed on production — webhooks arrive automatically.
 
 ---
 
 ## Namespace
 
-Currently uses `YourVendor\Plugin\Pcp\RaiAccept` — replace with your own vendor namespace before production use.
+Currently uses `YourVendor\Plugin\Pcp\RaiAccept` — replace before production deployment.
 
 ---
 
