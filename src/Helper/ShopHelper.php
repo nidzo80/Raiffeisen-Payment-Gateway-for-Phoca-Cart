@@ -162,9 +162,9 @@ class ShopHelper
 
         try {
             $notify = PhocacartOrderStatus::changeStatus($orderId, $statusId, $common->order_token);
-        } catch (\Exception $e) {
-            self::addLog(2, 'Payment - RaiAccept - ERROR setOrderStatus', $orderId, $e->getMessage());
-            return;
+        } catch (\Throwable $e) {
+            // Email greška nije fatalna - status je već promijenjen u tabeli
+            // Nastavljamo sa upisom historije
         }
 
         $comment = Text::_('COM_PHOCACART_ORDER_STATUS_CHANGED_BY_PAYMENT_SERVICE_PROVIDER') . ' (RaiAccept)';
@@ -182,6 +182,10 @@ class ShopHelper
             $comment .= "\n" . Text::_('COM_PHOCACART_PAYMENT_STATUS') . ': ' . $statusName;
         }
 
-        PhocacartOrderStatus::setHistory($orderId, $statusId, $notify, $comment);
+        try {
+            PhocacartOrderStatus::setHistory($orderId, $statusId, $notify, $comment);
+        } catch (\Throwable $e) {
+            // Historija nije fatalna
+        }
     }
 }

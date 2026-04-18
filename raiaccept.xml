@@ -15,8 +15,8 @@
     <languages folder="language">
         <language tag="en-GB">en-GB/plg_pcp_raiaccept.ini</language>
         <language tag="en-GB">en-GB/plg_pcp_raiaccept.sys.ini</language>
-		<language tag="sr-YU">sr-YU/plg_pcp_raiaccept.ini</language>
-        <language tag="sr-YU">sr-YU/plg_pcp_raiaccept.sys.ini</language>
+        <language tag="sr-RS">sr-RS/plg_pcp_raiaccept.ini</language>
+        <language tag="sr-RS">sr-RS/plg_pcp_raiaccept.sys.ini</language>
     </languages>
 
     <files>

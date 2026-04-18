@@ -38,27 +38,25 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
     use DatabaseAwareTrait;
 
     /**
-     * Override registerListeners da eksplicitno registrujemo PSR-14 event.
+     * Registruje event listenere za Joomla 6 PSR-14 dispatcher.
      *
      * @since 1.0.0
      */
-    public function registerListeners(): void
+    public function __construct($subject, array $config = [])
     {
-        parent::registerListeners();
+        parent::__construct($subject, $config);
 
-        // Eksplicitno registrujemo PSR-14 event koji šalje Event objekat
-        $this->getDispatcher()->addListener(
-            'onPCPgetPaymentBranchInfoAdminList',
-            [$this, 'onPCPgetPaymentBranchInfoAdminList']
-        );
+        // Eksplicitno registrujemo onPCPgetPaymentBranchInfoAdminList
+        // jer Phoca Cart ga dispatcha kao PSR-14 event (Event objekat),
+        // dok ostali onPCP* eventi koriste stari Phoca Cart direktni stil.
+        if ($subject instanceof \Joomla\Event\DispatcherInterface) {
+            $subject->addListener(
+                'onPCPgetPaymentBranchInfoAdminList',
+                [$this, 'onPCPgetPaymentBranchInfoAdminList']
+            );
+        }
     }
 
-    /**
-     * Registruje event listenere.
-     * Potrebno za Joomla 5 PSR-14 evente koji šalju Event objekat.
-     *
-     * @since 1.0.0
-     */
     /**
      * @var bool
      * @since 1.0.0
@@ -683,6 +681,37 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
     }
 
     /**
+     * Dohvata credentials direktno iz baze.
+     * Koristi se u Ajax kontekstu gdje PhocacartPayment klasa nije dostupna.
+     *
+     * @since 1.0.0
+     */
+    private function getCredentialsFromDb(int $pid): array
+    {
+        // Phoca Cart čuva payment method params u #__phocacart_payment_methods
+        // a ne u #__extensions
+        $db     = \Joomla\CMS\Factory::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+        $params = $db->setQuery(
+            $db->getQuery(true)
+               ->select('params')
+               ->from('#__phocacart_payment_methods')
+               ->where('id = ' . (int) $pid)
+        )->loadResult();
+
+        if (empty($params)) {
+            throw new \RuntimeException('RaiAccept payment method params not found for pid=' . $pid);
+        }
+
+        $registry = new Registry($params);
+
+        return [
+            'sandbox'  => (bool) $registry->get('sandbox', 1),
+            'username' => trim($registry->get('api_username', '')),
+            'password' => trim($registry->get('api_password', '')),
+        ];
+    }
+
+    /**
      * Dohvata credentials iz plugin parametara.
      *
      * @since 1.0.0
@@ -706,7 +735,13 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
      */
     private function getOrderStatuses(int $pid): array
     {
-        $params = ShopHelper::getPaymentMethod($pid)->params;
+        // Pokušavamo kroz ShopHelper (checkout kontekst gdje je Phoca Cart učitan)
+        // Ako ne uspije, čitamo direktno iz $this->params
+        try {
+            $params = ShopHelper::getPaymentMethod($pid)->params;
+        } catch (\Throwable $e) {
+            $params = $this->params;
+        }
 
         return [
             'completed'     => (int) $params->get('status_completed', 6),
@@ -735,16 +770,10 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
      */
     public function onPCPgetPaymentBranchInfoAdminList(\Joomla\Event\Event $event): void
     {
-        $context     = $event->getArgument('context');
+        $pid         = $event->getArgument('context');
         $item        = $event->getArgument('order');
         $paymentInfo = $event->getArgument('paymentMethod');
         $eventData   = $event->getArgument('eventData', []);
-
-        \PhocacartLog::add(1, 'RAI BRANCH', 0,
-            'context=' . $context
-            . ' pluginname=' . ($eventData['pluginname'] ?? 'none')
-            . ' myname=' . $this->name
-            . ' match=' . ($this->isMyPlugin($eventData) ? 'YES' : 'NO'));
 
         if (!$this->isMyPlugin($eventData)) {
             return;
@@ -758,22 +787,25 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
         $raiTransId = $raiData['rai_transaction_id'] ?? '';
         $raiOrderId = $raiData['rai_order_id']       ?? '';
 
-        \PhocacartLog::add(1, 'RAI BRANCH 2', 0,
-            'raiTransId=' . $raiTransId . ' raiOrderId=' . $raiOrderId);
-
-        if (empty($raiTransId) || empty($raiOrderId)) {
+        if (empty($raiOrderId)) {
             return;
         }
 
         $currency        = $item->currency_code ?? 'RSD';
         $rate            = (float) ($item->currency_exchange_rate ?? 1);
-        $totalAmount     = (float) ($item->total_amount_currency ?? ($item->total_amount ?? 0) * $rate);
+        $totalAmountRaw  = (float) ($item->total_amount_currency ?? 0);
+        $totalAmount     = $totalAmountRaw > 0 ? $totalAmountRaw : round((float)($item->total_amount ?? 0) * $rate, 2);
         $alreadyRefunded = (float) ($raiData['rai_refunded_amount'] ?? 0);
         $availableAmount = round($totalAmount - $alreadyRefunded, 2);
 
         if ($availableAmount <= 0) {
-            $event->addResult(['content' => '<div class="badge text-bg-success mt-1">Fully Refunded</div>']);
-        return;
+            $event->setArgument('result', [['content' => '<div class="badge text-bg-success mt-1">Fully Refunded</div>']]);
+            return;
+        }
+
+        if (empty($raiTransId)) {
+            $event->setArgument('result', [['content' => '<div class="badge text-bg-warning mt-1">Transaction ID missing</div>']]);
+            return;
         }
 
         $orderId   = (int) $item->id;
@@ -825,7 +857,7 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
             . '});return false;}'
             . '</script>';
 
-        $event->addResult(['content' => $content]);
+        $event->setArgument('result', [['content' => $content]]);
     }
 
     /**
@@ -836,6 +868,12 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
      */
     public function onAjaxRaiaccept(): array
     {
+        // Učitavamo Phoca Cart bootstrap jer nije dostupan u Ajax kontekstu
+        $bootstrapPath = JPATH_ADMINISTRATOR . '/components/com_phocacart/libraries/bootstrap.php';
+        if (file_exists($bootstrapPath)) {
+            require_once $bootstrapPath;
+        }
+
         $app  = $this->getApplication();
         $user = $app->getIdentity();
 
@@ -863,9 +901,14 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
         }
 
         try {
-            $credentials = $this->getCredentials($paymentId);
+            $debug = date('H:i:s') . " START orderId=$orderId paymentId=$paymentId amount=$amount\n";
+
+            // Dohvatamo kredencijale direktno iz baze - PhocacartPayment nije dostupan u Ajax kontekstu
+            $credentials = $this->getCredentialsFromDb($paymentId);
+
             $apiHelper   = new ApiHelper($credentials);
             $authToken   = $apiHelper->authenticate();
+
             $result      = $apiHelper->refund($authToken, $raiOrderId, $raiTransId, $amount, $currency);
             $refundTxId  = $result['transactionId'] ?? '';
 
@@ -883,10 +926,21 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
             $db          = \Joomla\CMS\Factory::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
             $totalAmount = (float) $db->setQuery(
                 $db->getQuery(true)
-                   ->select('total_amount_currency')
-                   ->from('#__phocacart_orders')
-                   ->where('id = ' . $orderId)
+                   ->select('t.amount_currency')
+                   ->from('#__phocacart_order_total AS t')
+                   ->where('t.order_id = ' . $orderId)
+                   ->where('t.type = ' . $db->quote('brutto'))
             )->loadResult();
+
+            if ($totalAmount <= 0) {
+                $totalAmount = (float) $db->setQuery(
+                    $db->getQuery(true)
+                       ->select('t.amount')
+                       ->from('#__phocacart_order_total AS t')
+                       ->where('t.order_id = ' . $orderId)
+                       ->where('t.type = ' . $db->quote('brutto'))
+                )->loadResult();
+            }
 
             $statuses = $this->getOrderStatuses($paymentId);
             $statusId = ($newRefunded < $totalAmount)
@@ -896,7 +950,7 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
 
             ShopHelper::setOrderStatus($orderId, $statusId, $statusLabel);
 
-            ShopHelper::addLog(1, 'Payment - RaiAccept - REFUND', $orderId,
+            \PhocacartLog::add(1, 'Payment - RaiAccept - REFUND', $orderId,
                 'Admin refund: ' . $amount . ' ' . $currency . ' | TX: ' . $refundTxId);
 
             return [
@@ -904,8 +958,7 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
                 'message' => 'Refund of ' . number_format($amount, 2) . ' ' . $currency . ' successful.',
             ];
 
-        } catch (Exception $e) {
-            ShopHelper::addLog(2, 'Payment - RaiAccept - REFUND ERROR', $orderId, $e->getMessage());
+        } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
