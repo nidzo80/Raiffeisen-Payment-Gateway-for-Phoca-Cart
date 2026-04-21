@@ -163,8 +163,9 @@ class ShopHelper
         try {
             $notify = PhocacartOrderStatus::changeStatus($orderId, $statusId, $common->order_token);
         } catch (\Throwable $e) {
+            \PhocacartLog::add(2, 'Payment - RaiAccept - ERROR changeStatus', $orderId,
+                $e->getMessage() . ' token=' . ($common->order_token ?? 'NULL'));
             // Email greška nije fatalna - status je već promijenjen u tabeli
-            // Nastavljamo sa upisom historije
         }
 
         $comment = Text::_('COM_PHOCACART_ORDER_STATUS_CHANGED_BY_PAYMENT_SERVICE_PROVIDER') . ' (RaiAccept)';

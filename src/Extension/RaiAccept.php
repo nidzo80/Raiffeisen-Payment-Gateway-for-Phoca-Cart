@@ -213,39 +213,10 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
             return;
         }
 
-        // SUCCESS: praznimo korpu.
-        // Webhook postavlja finalni status - ali ako webhook ne stigne
-        // (npr. dev server), postavljamo status i ovde kao backup.
+        // SUCCESS: praznimo korpu i redirektujemo.
+        // Status postavlja ISKLJUČIVO webhook - izbjegavamo dupli email.
+        // Ako webhook ne stigne (dev server), koristiti rai_check.php za ručno postavljanje.
         ShopHelper::emptyCart();
-
-        if ($orderId > 0 && $paymentId > 0) {
-            $statuses = $this->getOrderStatuses($paymentId);
-
-            // Verifikujemo status direktno od RaiAccept API-ja
-            $paymentData = ShopHelper::getPaymentData($orderId);
-            $raiOrderId  = $paymentData[$this->name]['rai_order_id'] ?? null;
-
-            if ($raiOrderId) {
-                try {
-                    $credentials = $this->getCredentials($paymentId);
-                    $apiHelper   = new ApiHelper($credentials);
-                    $token       = $apiHelper->authenticate();
-                    $orderStatus = $apiHelper->getOrderStatus($token, $raiOrderId);
-                    $finalStatus = $orderStatus['status'] ?? '';
-
-                    if ($finalStatus === 'PAID') {
-                        // Čuvamo da webhook ne duplikuje
-                        ShopHelper::saveInternalData($orderId, [
-                            'rai_status_set_on_return' => true,
-                        ], $this->name);
-                        ShopHelper::setOrderStatus($orderId, $statuses['completed'], 'COMPLETED');
-                    }
-                } catch (Exception $e) {
-                    ShopHelper::addLog(2, 'Payment - RaiAccept - ERROR return verify', $orderId,
-                        $e->getMessage());
-                }
-            }
-        }
     }
 
     /**
@@ -448,9 +419,17 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
                     'rai_status_code'    => $statusCode,
                 ], $this->name);
 
-                // Postavljamo status samo ako nije već postavljen na success returnu
-                $pd = ShopHelper::getPaymentData($orderId);
-                if (empty($pd[$this->name]['rai_status_set_on_return'])) {
+                // Postavljamo status samo ako nije već Completed
+                // (webhook može stići više puta)
+                $db = \Joomla\CMS\Factory::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
+                $currentStatusId = (int) $db->setQuery(
+                    $db->getQuery(true)
+                       ->select('status_id')
+                       ->from('#__phocacart_orders')
+                       ->where('id = ' . $orderId)
+                )->loadResult();
+
+                if ($currentStatusId !== $statuses['completed']) {
                     ShopHelper::setOrderStatus($orderId, $statuses['completed'], 'COMPLETED');
                 }
                 ShopHelper::addLog(1, 'Payment - RaiAccept - SUCCESS', $orderId,
