@@ -1,6 +1,6 @@
 # plg_pcp_raiaccept
 
-**RaiAccept (Raiffeisen Bank Serbia) payment gateway plugin for Phoca Cart (Joomla 6)**
+**RaiAccept (Raiffeisen Bank Serbia and other [Supported Acquiring Banks](https://github.com/nidzo80/Raiffeisen-Payment-Gateway-for-Phoca-Cart/blob/main/SETUP.md#supported-acquiring-banks)) payment gateway plugin for Phoca Cart (Joomla 6)**
 
 ---
 
