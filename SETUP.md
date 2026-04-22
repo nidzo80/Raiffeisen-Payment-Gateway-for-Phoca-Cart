@@ -1,3 +1,50 @@
+# About RaiAccept
+[RaiAccept](https://portal.raiaccept.com/) lets you receive card payments and issue refunds for your consumers’ orders they create with your e-commerce platform.
+
+RaiAccept is a safe, secure, easy to use, PCI-DSS and PSD2 compliant payment gateway with responsive UX and advanced Merchant portal with tracking and reporting capabilities.
+
+Whether you are using one of the popular off-the-shelf shop systems or a custom solution, RaiAccept is always simple to integrate.
+
+Start accepting payments and provide your consumers a seamless shopping experience with RaiAccept.
+# Supported Banks and Languages
+
+## Supported Acquiring Banks
+
+The table below shows the banks of the Raiffeisen group that RaiAccept is connected with.
+If you have a business account in one of the banks below, you can accept e-commerce payments
+in the supported countries and currencies.
+
+| Bank | Supported countries | Supported currencies |
+|---|---|---|
+| Raiffeisen Payment Acceptance Solutions | Austria, Italy, Germany, Poland, Czechia, Slovakia, Slovenia, Hungary, Romania | ALL, AUD, BGN, CAD, CHF, CZK, DKK, EUR, GBP, HUF, ILS, NOK, PLN, RON, RSD, SEK, TRY, USD |
+| Raiffeisen Bank Albania | Albania | ALL, EUR |
+| Raiffeisen Bank Croatia | Croatia | EUR |
+| Raiffeisen Bank Kosovo | Kosovo | EUR |
+| Raiffeisen Bank Serbia | Serbia | RSD |
+
+## Supported Languages
+
+The RaiAccept payment form is available in the following languages:
+
+| Code | Language |
+|---|---|
+| `al` | Albanian |
+| `hr` | Croatian |
+| `cs` | Czech |
+| `en` | English |
+| `fr` | French |
+| `de` | German |
+| `it` | Italian |
+| `pl` | Polish |
+| `ro` | Romanian |
+| `sr` | Serbian |
+| `sk` | Slovak |
+
+---
+
+*Source: [docs.raiaccept.com](https://docs.raiaccept.com)*
+
+
 # RaiAccept — Getting Started
 
 This guide covers everything you need to set up a RaiAccept sandbox account, generate API credentials, and start testing the plugin.
