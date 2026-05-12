@@ -880,29 +880,25 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
         }
 
         try {
-            $debug = date('H:i:s') . " START orderId=$orderId paymentId=$paymentId amount=$amount\n";
-
-            // Dohvatamo kredencijale direktno iz baze - PhocacartPayment nije dostupan u Ajax kontekstu
+            // Dohvatamo kredencijale direktno iz baze
             $credentials = $this->getCredentialsFromDb($paymentId);
 
-            $apiHelper   = new ApiHelper($credentials);
-            $authToken   = $apiHelper->authenticate();
+            // Validacija amount-a prema stvarnom iznosu u bazi
+            // Sprječava slanje većeg iznosa od originalnog ili već refundiranog
+            $db = \Joomla\CMS\Factory::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
 
-            $result      = $apiHelper->refund($authToken, $raiOrderId, $raiTransId, $amount, $currency);
-            $refundTxId  = $result['transactionId'] ?? '';
+            // Provjera da order pripada ovom payment ID-u (sprječava IDOR)
+            $orderPaymentId = (int) $db->setQuery(
+                $db->getQuery(true)
+                   ->select('payment_id')
+                   ->from('#__phocacart_orders')
+                   ->where('id = ' . $orderId)
+            )->loadResult();
 
-            // Ažuriramo params_payment
-            $paymentData = ShopHelper::getPaymentData($orderId);
-            $raiData     = $paymentData[$this->name] ?? [];
-            $newRefunded = round((float)($raiData['rai_refunded_amount'] ?? 0) + $amount, 2);
+            if ($orderPaymentId !== $paymentId) {
+                return ['success' => false, 'message' => 'Order/payment mismatch'];
+            }
 
-            ShopHelper::saveInternalData($orderId, [
-                'rai_refunded_amount' => $newRefunded,
-                'rai_refund_trans_id' => $refundTxId,
-            ], $this->name);
-
-            // Dohvatamo ukupan iznos za određivanje parcijalni/potpuni refund
-            $db          = \Joomla\CMS\Factory::getContainer()->get(\Joomla\Database\DatabaseInterface::class);
             $totalAmount = (float) $db->setQuery(
                 $db->getQuery(true)
                    ->select('t.amount_currency')
@@ -920,6 +916,31 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
                        ->where('t.type = ' . $db->quote('brutto'))
                 )->loadResult();
             }
+
+            $paymentDataCheck = ShopHelper::getPaymentData($orderId);
+            $raiDataCheck     = $paymentDataCheck[$this->name] ?? [];
+            $alreadyRefunded  = (float) ($raiDataCheck['rai_refunded_amount'] ?? 0);
+            $maxRefundable    = round($totalAmount - $alreadyRefunded, 2);
+
+            if ($amount > $maxRefundable + 0.01) {
+                return ['success' => false, 'message' => 'Refund amount exceeds available amount (' . $maxRefundable . ' ' . $currency . ')'];
+            }
+
+            $apiHelper   = new ApiHelper($credentials);
+            $authToken   = $apiHelper->authenticate();
+
+            $result      = $apiHelper->refund($authToken, $raiOrderId, $raiTransId, $amount, $currency);
+            $refundTxId  = $result['transactionId'] ?? '';
+
+            // Ažuriramo params_payment
+            $paymentData = ShopHelper::getPaymentData($orderId);
+            $raiData     = $paymentData[$this->name] ?? [];
+            $newRefunded = round((float)($raiData['rai_refunded_amount'] ?? 0) + $amount, 2);
+
+            ShopHelper::saveInternalData($orderId, [
+                'rai_refunded_amount' => $newRefunded,
+                'rai_refund_trans_id' => $refundTxId,
+            ], $this->name);
 
             $statuses = $this->getOrderStatuses($paymentId);
             $statusId = ($newRefunded < $totalAmount)

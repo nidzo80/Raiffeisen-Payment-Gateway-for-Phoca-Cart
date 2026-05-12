@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <extension type="plugin" group="pcp" method="upgrade" version="3">
     <name>plg_pcp_raiaccept</name>
-    <creationDate>21.04.2026.</creationDate>
+    <creationDate>12.05.2026.</creationDate>
     <author>Nikola Đurić Nidžo</author>
-    <authorEmail>info@lenix.rs</authorEmail>
+    <authorEmail>Nikola Đurić Nidžo</authorEmail>
     <copyright>Copyright (C) 2026. All rights reserved.</copyright>
     <license>GNU General Public License version 3 or later</license>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <description>PLG_PCP_RAIACCEPT_XML_DESCRIPTION</description>
     <namespace path="src">YourVendor\Plugin\Pcp\RaiAccept</namespace>
 
