@@ -6,7 +6,7 @@
     <authorEmail>Nikola Đurić Nidžo</authorEmail>
     <copyright>Copyright (C) 2026. All rights reserved.</copyright>
     <license>GNU General Public License version 3 or later</license>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <description>PLG_PCP_RAIACCEPT_XML_DESCRIPTION</description>
     <namespace path="src">YourVendor\Plugin\Pcp\RaiAccept</namespace>
 
@@ -104,6 +104,7 @@
                        label="PLG_PCP_RAIACCEPT_FIELD_API_PASSWORD_LABEL"
                        description="PLG_PCP_RAIACCEPT_FIELD_API_PASSWORD_DESC"
                        required="true"
+                       autocomplete="new-password"
                 />
 
             </fieldset>

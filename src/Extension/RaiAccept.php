@@ -47,8 +47,6 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
         parent::__construct($subject, $config);
 
         // Eksplicitno registrujemo onPCPgetPaymentBranchInfoAdminList
-        // jer Phoca Cart ga dispatcha kao PSR-14 event (Event objekat),
-        // dok ostali onPCP* eventi koriste stari Phoca Cart direktni stil.
         if ($subject instanceof \Joomla\Event\DispatcherInterface) {
             $subject->addListener(
                 'onPCPgetPaymentBranchInfoAdminList',
@@ -161,6 +159,9 @@ final class RaiAccept extends CMSPlugin implements DatabaseAwareInterface
             // Korak 3: Kreiranje payment sesije
             $sessionResult  = $apiHelper->createSession($token, $orderIdRai, $orderPayload);
             $redirectUrl    = $sessionResult['paymentRedirectURL'];
+
+            // Postavljamo srpski jezik na RaiAccept payment formi
+            $redirectUrl .= (str_contains($redirectUrl, '?') ? '&' : '?') . 'preferredLocale=sr';
 
             // Čuvamo RaiAccept order ID u bazi
             ShopHelper::saveInternalData($orderId, [
